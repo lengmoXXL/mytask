@@ -199,14 +199,19 @@ func TestFT_OnlyOneInProgress(t *testing.T) {
 	}
 	ctx.assertTaskStatus(task1.ID, task.StatusInProgress)
 
-	// 启动 task2，task1 应该自动变成 pending
+	// 启动 task2 应该失败，因为 task1 还是 in_progress
 	_, err = ctx.store.Submit(task2.ID)
-	if err != nil {
-		t.Fatalf("Start task2 failed: %v", err)
+	if err == nil {
+		t.Fatal("Expected error when starting task2 while task1 is in_progress")
+	}
+	if !strings.Contains(err.Error(), "another task is already in progress") {
+		t.Errorf("Expected 'another task is already in progress' error, got: %v", err)
 	}
 
-	ctx.assertTaskStatus(task2.ID, task.StatusInProgress)
-	ctx.assertTaskStatus(task1.ID, task.StatusPending)
+	// task1 应该仍然是 in_progress
+	ctx.assertTaskStatus(task1.ID, task.StatusInProgress)
+	// task2 应该仍然是 pending
+	ctx.assertTaskStatus(task2.ID, task.StatusPending)
 	ctx.assertOnlyOneInProgress()
 }
 
@@ -328,29 +333,24 @@ func TestFT_FullWorkflow(t *testing.T) {
 	ctx.assertTaskStatus(tsk1.ID, task.StatusInProgress)
 	ctx.assertTaskStatus(tsk2.ID, task.StatusPending)
 
-	// 切换到任务2
+	// 完成任务1
+	ctx.store.Complete(tsk1.ID)
+	ctx.assertTaskStatus(tsk1.ID, task.StatusCompleted)
+
+	// 任务2可以开始（因为任务1已完成）
 	ctx.store.Submit(tsk2.ID)
-	ctx.assertTaskStatus(tsk1.ID, task.StatusPending)
 	ctx.assertTaskStatus(tsk2.ID, task.StatusInProgress)
 
-	// 完成任务2
-	ctx.store.Complete(tsk2.ID)
-	ctx.assertTaskStatus(tsk2.ID, task.StatusCompleted)
+	// 重置任务2
+	ctx.store.Reset(tsk2.ID, "需求变更，暂停开发")
+	ctx.assertTaskStatus(tsk2.ID, task.StatusSkipped)
 
-	// 任务1可以重新开始
-	ctx.store.Submit(tsk1.ID)
-	ctx.assertTaskStatus(tsk1.ID, task.StatusInProgress)
-
-	// 重置任务1
-	ctx.store.Reset(tsk1.ID, "需求变更，暂停开发")
-	ctx.assertTaskStatus(tsk1.ID, task.StatusSkipped)
-
-	// 验证最终状态：task2 是 completed，task1 是 skipped
+	// 验证最终状态：task1 是 completed，task2 是 skipped
 	tsk1Check, _ := ctx.store.GetByID(tsk1.ID)
 	tsk2Check, _ := ctx.store.GetByID(tsk2.ID)
 
-	fmt.Printf("Task1: status=%s, reset_reason=%s\n", tsk1Check.Status, tsk1Check.ResetReason)
-	fmt.Printf("Task2: status=%s\n", tsk2Check.Status)
+	fmt.Printf("Task1: status=%s\n", tsk1Check.Status)
+	fmt.Printf("Task2: status=%s, reset_reason=%s\n", tsk2Check.Status, tsk2Check.ResetReason)
 }
 
 // 测试：Submit 命令

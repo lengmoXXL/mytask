@@ -146,22 +146,23 @@ func (s *Store) Submit(id int64) (*Task, error) {
 		return nil, fmt.Errorf("task %d is not in pending status, current status: %s", id, task.Status)
 	}
 
-	// 将其他 in_progress 任务设为 pending
-	_, err = s.db.Exec(
-		`UPDATE tasks SET status = ?, updated_at = ? WHERE status = ?`,
-		StatusPending, time.Now(), StatusInProgress,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to reset in_progress tasks: %w", err)
-	}
-
-	// 更新当前任务状态为 in_progress
-	_, err = s.db.Exec(
-		`UPDATE tasks SET status = ?, updated_at = ?, reset_reason = NULL WHERE id = ?`,
-		StatusInProgress, time.Now(), id,
+	// 原子操作：仅在无 in_progress 任务时更新状态
+	result, err := s.db.Exec(
+		`UPDATE tasks SET status = ?, updated_at = ?, reset_reason = NULL
+		 WHERE id = ? AND NOT EXISTS (SELECT 1 FROM tasks WHERE status = ?)`,
+		StatusInProgress, time.Now(), id, StatusInProgress,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to submit task: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get affected rows: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return nil, fmt.Errorf("cannot start task: another task is already in progress")
 	}
 
 	return s.GetByID(id)

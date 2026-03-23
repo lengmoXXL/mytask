@@ -63,12 +63,13 @@ func (e *executor) ExecutePostReset(t *task.Task) error {
 }
 
 func (e *executor) executeHooks(dir string, t *task.Task) error {
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		return nil
-	}
+	hookType := filepath.Base(dir)
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
 		return fmt.Errorf("failed to read hooks directory: %w", err)
 	}
 
@@ -106,14 +107,18 @@ func (e *executor) executeHooks(dir string, t *task.Task) error {
 	)
 
 	for _, script := range scripts {
+		fmt.Printf("\n─── Hook: %s/%s ───\n", hookType, script.name)
+
 		cmd := exec.Command(script.path)
 		cmd.Env = env
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 
 		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("hook %s failed: %w", script.name, err)
+			return fmt.Errorf("hook %s/%s failed: %w", hookType, script.name, err)
 		}
+
+		fmt.Printf("─── End Hook: %s/%s ───\n\n", hookType, script.name)
 	}
 
 	return nil

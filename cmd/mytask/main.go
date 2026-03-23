@@ -547,9 +547,23 @@ Hooks receive task info via environment variables:
 
 ` + "```bash\n#!/bin/bash\n# .mytask/hooks/prestart/01-notify.sh\necho \"Starting task: $TASK_NAME\" | mail -s \"Task Started\" user@example.com\n```" + `
 
+## Predefined Hooks
+
+Use ` + "`mytask install-hooks`" + ` to install predefined hooks:
+
+| Hook | Description | Recommended Type |
+|------|-------------|------------------|
+| git-reset | Reset git state before operation | prestart |
+| git-commit | Commit changes after operation | postcreate, poststart |
+| notify | Send desktop notification | poststart, postreset |
+| log | Log operations to a file | any |
+
+Example:
+` + "```bash\nmytask install-hooks git-commit --hook-type postcreate\nmytask install-hooks git-reset --hook-type prestart\n```" + `
+
 ## Key Constraints
 
-1. **Only one task can be in_progress** - Starting a new task automatically sets any other in_progress task to pending
+1. **Only one task can be in_progress** - Cannot start a new task while another is in_progress (complete or reset the current task first)
 2. **reset requires a reason** - Must provide -r flag with explanation
 3. **Hooks must be executable** - Non-executable scripts cause errors
 `

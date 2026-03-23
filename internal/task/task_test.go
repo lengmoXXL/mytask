@@ -3,6 +3,7 @@ package task
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -102,22 +103,31 @@ func TestStore_Start_OnlyOneInProgress(t *testing.T) {
 		t.Errorf("Expected task1 status '%s', got '%s'", StatusInProgress, task1.Status)
 	}
 
-	// 启动 task2，task1 应该自动变成 pending
-	task2, err = store.Submit(task2.ID)
-	if err != nil {
-		t.Fatalf("Start task2 failed: %v", err)
+	// 启动 task2 应该失败，因为 task1 还是 in_progress
+	_, err = store.Submit(task2.ID)
+	if err == nil {
+		t.Error("Expected error when starting task2 while task1 is in_progress")
 	}
-	if task2.Status != StatusInProgress {
-		t.Errorf("Expected task2 status '%s', got '%s'", StatusInProgress, task2.Status)
+	if !strings.Contains(err.Error(), "another task is already in progress") {
+		t.Errorf("Expected 'another task is already in progress' error, got: %v", err)
 	}
 
-	// 验证 task1 已经变成 pending
+	// 验证 task1 仍然是 in_progress
 	task1, err = store.GetByID(task1.ID)
 	if err != nil {
 		t.Fatalf("GetByID task1 failed: %v", err)
 	}
-	if task1.Status != StatusPending {
-		t.Errorf("Expected task1 status '%s' after task2 started, got '%s'", StatusPending, task1.Status)
+	if task1.Status != StatusInProgress {
+		t.Errorf("Expected task1 to remain in_progress, got '%s'", task1.Status)
+	}
+
+	// 验证 task2 仍然是 pending
+	task2, err = store.GetByID(task2.ID)
+	if err != nil {
+		t.Fatalf("GetByID task2 failed: %v", err)
+	}
+	if task2.Status != StatusPending {
+		t.Errorf("Expected task2 to remain pending, got '%s'", task2.Status)
 	}
 }
 
@@ -233,38 +243,6 @@ func TestStore_Reset_CompletedTask(t *testing.T) {
 	}
 	if task.Status != StatusSkipped {
 		t.Errorf("Expected status '%s', got '%s'", StatusSkipped, task.Status)
-	}
-}
-
-func TestStore_Submit_ResetsOtherInProgressTasks(t *testing.T) {
-	store := newTestStore(t)
-	defer store.Close()
-
-	task1, _ := store.Create("task1", "")
-	task2, _ := store.Create("task2", "")
-
-	// 启动 task1
-	store.Submit(task1.ID)
-
-	// 验证 task1 是 in_progress
-	task1, _ = store.GetByID(task1.ID)
-	if task1.Status != StatusInProgress {
-		t.Fatalf("Expected task1 to be in_progress, got %s", task1.Status)
-	}
-
-	// 启动 task2
-	store.Submit(task2.ID)
-
-	// task1 应该变成 pending
-	task1, _ = store.GetByID(task1.ID)
-	if task1.Status != StatusPending {
-		t.Errorf("Expected task1 to be pending after task2 started, got %s", task1.Status)
-	}
-
-	// task2 应该是 in_progress
-	task2, _ = store.GetByID(task2.ID)
-	if task2.Status != StatusInProgress {
-		t.Errorf("Expected task2 to be in_progress, got %s", task2.Status)
 	}
 }
 
